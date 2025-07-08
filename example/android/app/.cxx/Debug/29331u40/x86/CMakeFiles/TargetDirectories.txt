@@ -1,0 +1,2 @@
+/Users/takashi/projects/ar_flutter_plugin/example/android/app/.cxx/Debug/29331u40/x86/CMakeFiles/edit_cache.dir
+/Users/takashi/projects/ar_flutter_plugin/example/android/app/.cxx/Debug/29331u40/x86/CMakeFiles/rebuild_cache.dir
