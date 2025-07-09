@@ -85,8 +85,6 @@ internal class AndroidARView(
     private var footprintSelectionVisualizer = FootprintSelectionVisualizer()
     // Model builder
     private var modelBuilder = ArModelBuilder()
-    // Cloud anchor handler
-    private lateinit var cloudAnchorHandler: CloudAnchorHandler
 
     private lateinit var sceneUpdateListener: com.google.ar.sceneform.Scene.OnUpdateListener
     private lateinit var onNodeTapListener: com.google.ar.sceneform.Scene.OnPeekTouchListener
@@ -244,41 +242,6 @@ internal class AndroidARView(
                             val anchorName: String? = call.argument<String>("name")
                             anchorName?.let{ name ->
                                 removeAnchor(name)
-                            }
-                        }
-                        "initGoogleCloudAnchorMode" -> {
-                            if (arSceneView.session != null) {
-                                val config = Config(arSceneView.session)
-                                config.cloudAnchorMode = Config.CloudAnchorMode.ENABLED
-                                config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                                config.focusMode = Config.FocusMode.AUTO
-                                arSceneView.session?.configure(config)
-
-                                cloudAnchorHandler = CloudAnchorHandler(arSceneView.session!!)
-                            } else {
-                                sessionManagerChannel.invokeMethod("onError", listOf("Error initializing cloud anchor mode: Session is null"))
-                            }
-                        }
-                        "uploadAnchor" ->  {
-                            val anchorName: String? = call.argument<String>("name")
-                            val ttl: Int? = call.argument<Int>("ttl")
-                            anchorName?.let {
-                                val anchorNode = arSceneView.scene.findByName(anchorName) as AnchorNode?
-                                if (ttl != null) {
-                                    cloudAnchorHandler.hostCloudAnchorWithTtl(anchorName, anchorNode!!.anchor, cloudAnchorUploadedListener(), ttl!!)
-                                } else {
-                                    cloudAnchorHandler.hostCloudAnchor(anchorName, anchorNode!!.anchor, cloudAnchorUploadedListener())
-                                }
-                                //Log.d(TAG, "---------------- HOSTING INITIATED ------------------")
-                                result.success(true)
-                            }
-
-                        }
-                        "downloadAnchor" -> {
-                            val anchorId: String? = call.argument<String>("cloudanchorid")
-                            //Log.d(TAG, "---------------- RESOLVING INITIATED ------------------")
-                            anchorId?.let {
-                                cloudAnchorHandler.resolveCloudAnchor(anchorId, cloudAnchorDownloadedListener())
                             }
                         }
                         else -> {}
@@ -641,8 +604,6 @@ internal class AndroidARView(
             pointCloud?.release()
         }
         val updatedAnchors = arSceneView.arFrame!!.updatedAnchors
-        // Notify the cloudManager of all the updates.
-        if (this::cloudAnchorHandler.isInitialized) {cloudAnchorHandler.onUpdate(updatedAnchors)}
 
         if (keepNodeSelected && transformationSystem.selectedNode != null && transformationSystem.selectedNode!!.isTransforming){
             // If the selected node is currently transforming, we want to deselect it as soon as the transformation is done
@@ -872,55 +833,6 @@ internal class AndroidARView(
         }
     }
 
-    private inner class cloudAnchorUploadedListener: CloudAnchorHandler.CloudAnchorListener {
-        override fun onCloudTaskComplete(anchorName: String?, anchor: Anchor?) {
-            val cloudState = anchor!!.cloudAnchorState
-            if (cloudState.isError) {
-                Log.e(TAG, "Error uploading anchor, state $cloudState")
-                sessionManagerChannel.invokeMethod("onError", listOf("Error uploading anchor, state $cloudState"))
-                return
-            }
-            // Swap old an new anchor of the respective AnchorNode
-            val anchorNode = arSceneView.scene.findByName(anchorName) as AnchorNode?
-            val oldAnchor = anchorNode?.anchor
-            anchorNode?.anchor = anchor
-            oldAnchor?.detach()
-
-            val args = HashMap<String, String?>()
-            args["name"] = anchorName
-            args["cloudanchorid"] = anchor.cloudAnchorId
-            anchorManagerChannel.invokeMethod("onCloudAnchorUploaded", args)
-        }
-    }
-
-    private inner class cloudAnchorDownloadedListener: CloudAnchorHandler.CloudAnchorListener {
-        override fun onCloudTaskComplete(anchorName: String?, anchor: Anchor?) {
-            val cloudState = anchor!!.cloudAnchorState
-            if (cloudState.isError) {
-                Log.e(TAG, "Error downloading anchor, state $cloudState")
-                sessionManagerChannel.invokeMethod("onError", listOf("Error downloading anchor, state $cloudState"))
-                return
-            }
-            //Log.d(TAG, "---------------- RESOLVING SUCCESSFUL ------------------")
-            val newAnchorNode = AnchorNode(anchor)
-            // Register new anchor on the Flutter side of the plugin
-            anchorManagerChannel.invokeMethod("onAnchorDownloadSuccess", serializeAnchor(newAnchorNode, anchor), object: MethodChannel.Result {
-                override fun success(result: Any?) {
-                    newAnchorNode.name = result.toString()
-                    newAnchorNode.setParent(arSceneView.scene)
-                    //Log.d(TAG, "---------------- REGISTERING ANCHOR SUCCESSFUL ------------------")
-                }
-
-                override fun error(errorCode: String, errorMessage: String?, errorDetails: Any?) {
-                    sessionManagerChannel.invokeMethod("onError", listOf("Error while registering downloaded anchor at the AR Flutter plugin: $errorMessage"))
-                }
-
-                override fun notImplemented() {
-                    sessionManagerChannel.invokeMethod("onError", listOf("Error while registering downloaded anchor at the AR Flutter plugin"))
-                }
-            })
-        }
-    }
 
 }
 

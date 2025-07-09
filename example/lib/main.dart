@@ -6,7 +6,6 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
 
-// import 'package:ar_flutter_plugin_example/examples/cloudanchorexample.dart';
 import 'package:ar_flutter_plugin_example/examples/localandwebobjectsexample.dart';
 import 'package:ar_flutter_plugin_example/examples/debugoptionsexample.dart';
 
@@ -107,10 +106,6 @@ class ExampleList extends StatelessWidget {
           () => Navigator.push(context,
               MaterialPageRoute(builder: (context) => ScreenshotWidget()))),
       // Example(
-      //     'Cloud Anchors',
-      //     'Place and retrieve 3D objects using the Google Cloud Anchor API',
-      //     () => Navigator.push(context,
-      //         MaterialPageRoute(builder: (context) => CloudAnchorWidget()))),
       // Example(
       //     'External Model Management',
       //     'Similar to Cloud Anchors example, but uses external database to choose from available 3D models',
