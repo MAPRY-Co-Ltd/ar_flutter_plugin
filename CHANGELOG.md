@@ -1,6 +1,9 @@
 # Changelog
 
-##0.7.3
+## 0.7.4
+* Supports 16KB page size
+
+## 0.7.3
 * Update the examples with null-safety
 
 ## 0.7.2
