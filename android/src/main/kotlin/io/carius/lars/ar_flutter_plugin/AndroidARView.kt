@@ -751,6 +751,72 @@ internal class AndroidARView(
                                 null // return null because java expects void return (in java, void has no instance, whereas in Kotlin, this closure returns a Unit which has one instance)
                             }
                 }
+                4 -> { // Cube (single programmatically generated cube)
+                    val data = dict_node["data"] as? HashMap<String, Any>
+                    val width = (data?.get("cubeWidth") as? Double)?.toFloat() ?: 0.1f
+                    val height = (data?.get("cubeHeight") as? Double)?.toFloat() ?: 0.1f
+                    val length = (data?.get("cubeLength") as? Double)?.toFloat() ?: 0.1f
+                    val colorValue = (data?.get("cubeColor") as? Number)?.toLong() ?: 0xFFFF0000
+
+                    modelBuilder.makeCubeNode(viewContext, transformationSystem, objectManagerChannel, enablePans, enableRotation, dict_node["name"] as String, width, height, length, colorValue, dict_node["transformation"] as ArrayList<Double>)
+                            .thenAccept{node ->
+                                val anchorName: String? = dict_anchor?.get("name") as? String
+                                val anchorType: Int? = dict_anchor?.get("type") as? Int
+                                if (anchorName != null && anchorType != null) {
+                                    val anchorNode = arSceneView.scene.findByName(anchorName) as AnchorNode?
+                                    if (anchorNode != null) {
+                                        anchorNode.addChild(node)
+                                        completableFutureSuccess.complete(true)
+                                    } else {
+                                        completableFutureSuccess.complete(false)
+                                    }
+                                } else {
+                                    arSceneView.scene.addChild(node)
+                                    completableFutureSuccess.complete(true)
+                                }
+                                completableFutureSuccess.complete(false)
+                            }
+                            .exceptionally { throwable ->
+                                val mainHandler = Handler(viewContext.mainLooper)
+                                val runnable = Runnable {sessionManagerChannel.invokeMethod("onError", listOf("Unable to create cube node")) }
+                                mainHandler.post(runnable)
+                                completableFutureSuccess.completeExceptionally(throwable)
+                                null
+                            }
+                }
+                5 -> { // Rectangle frame (parent node with 4 cube children)
+                    val data = dict_node["data"] as? HashMap<String, Any>
+                    val frameSize = (data?.get("frameSize") as? Double)?.toFloat() ?: 2.0f
+                    val frameWidth = (data?.get("frameWidth") as? Double)?.toFloat() ?: 0.02f
+                    val frameHeight = (data?.get("frameHeight") as? Double)?.toFloat() ?: 0.001f
+                    val colorValue = (data?.get("frameColor") as? Number)?.toLong() ?: 0xFFFF0000
+
+                    modelBuilder.makeRectangleFrameNode(viewContext, transformationSystem, objectManagerChannel, enablePans, enableRotation, dict_node["name"] as String, frameSize, frameWidth, frameHeight, colorValue, dict_node["transformation"] as ArrayList<Double>)
+                            .thenAccept{node ->
+                                val anchorName: String? = dict_anchor?.get("name") as? String
+                                val anchorType: Int? = dict_anchor?.get("type") as? Int
+                                if (anchorName != null && anchorType != null) {
+                                    val anchorNode = arSceneView.scene.findByName(anchorName) as AnchorNode?
+                                    if (anchorNode != null) {
+                                        anchorNode.addChild(node)
+                                        completableFutureSuccess.complete(true)
+                                    } else {
+                                        completableFutureSuccess.complete(false)
+                                    }
+                                } else {
+                                    arSceneView.scene.addChild(node)
+                                    completableFutureSuccess.complete(true)
+                                }
+                                completableFutureSuccess.complete(false)
+                            }
+                            .exceptionally { throwable ->
+                                val mainHandler = Handler(viewContext.mainLooper)
+                                val runnable = Runnable {sessionManagerChannel.invokeMethod("onError", listOf("Unable to create rectangle frame node")) }
+                                mainHandler.post(runnable)
+                                completableFutureSuccess.completeExceptionally(throwable)
+                                null
+                            }
+                }
                 else -> {
                     completableFutureSuccess.complete(false)
                 }

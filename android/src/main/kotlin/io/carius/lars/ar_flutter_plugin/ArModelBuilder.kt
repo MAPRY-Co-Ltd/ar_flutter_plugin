@@ -90,6 +90,92 @@ class ArModelBuilder {
         return rootNode
     }
 
+    // Creates a cube node with given size and color using ShapeFactory (no gltf needed)
+    fun makeCubeNode(context: Context, transformationSystem: TransformationSystem, objectManagerChannel: MethodChannel, enablePans: Boolean, enableRotation: Boolean, name: String, width: Float, height: Float, length: Float, colorValue: Long, transformation: ArrayList<Double>): CompletableFuture<CustomTransformableNode> {
+        val completableFutureNode: CompletableFuture<CustomTransformableNode> = CompletableFuture()
+
+        val cubeNode = CustomTransformableNode(transformationSystem, objectManagerChannel, enablePans, enableRotation)
+
+        val a = (colorValue shr 24 and 0xFF).toFloat() / 255f
+        val r = (colorValue shr 16 and 0xFF).toFloat() / 255f
+        val g = (colorValue shr 8 and 0xFF).toFloat() / 255f
+        val b = (colorValue and 0xFF).toFloat() / 255f
+
+        MaterialFactory.makeOpaqueWithColor(context, Color(r, g, b))
+            .thenAccept { material ->
+                val size = Vector3(width, height, length)
+                val renderable = ShapeFactory.makeCube(size, Vector3.zero(), material)
+                renderable.isShadowCaster = false
+                renderable.isShadowReceiver = false
+                cubeNode.renderable = renderable
+                cubeNode.name = name
+                val transform = deserializeMatrix4(transformation)
+                cubeNode.worldScale = transform.first
+                cubeNode.worldPosition = transform.second
+                cubeNode.worldRotation = transform.third
+                completableFutureNode.complete(cubeNode)
+            }
+            .exceptionally { throwable ->
+                completableFutureNode.completeExceptionally(throwable)
+                null
+            }
+
+        return completableFutureNode
+    }
+
+    // Creates a rectangle frame node with 4 cube edges as children (parent-child structure)
+    fun makeRectangleFrameNode(context: Context, transformationSystem: TransformationSystem, objectManagerChannel: MethodChannel, enablePans: Boolean, enableRotation: Boolean, name: String, frameSize: Float, frameWidth: Float, frameHeight: Float, colorValue: Long, transformation: ArrayList<Double>): CompletableFuture<CustomTransformableNode> {
+        val completableFutureNode: CompletableFuture<CustomTransformableNode> = CompletableFuture()
+
+        val parentNode = CustomTransformableNode(transformationSystem, objectManagerChannel, enablePans, enableRotation)
+
+        val a = (colorValue shr 24 and 0xFF).toFloat() / 255f
+        val r = (colorValue shr 16 and 0xFF).toFloat() / 255f
+        val g = (colorValue shr 8 and 0xFF).toFloat() / 255f
+        val b = (colorValue and 0xFF).toFloat() / 255f
+
+        MaterialFactory.makeOpaqueWithColor(context, Color(r, g, b))
+            .thenAccept { material ->
+                // Edge definitions: top, bottom, left, right
+                data class Edge(val w: Float, val h: Float, val l: Float, val x: Float, val y: Float, val z: Float)
+                val halfSize = frameSize / 2f
+                val edges = listOf(
+                    Edge(frameSize + frameWidth, frameHeight, frameWidth, 0f, 0f, halfSize),   // top
+                    Edge(frameSize + frameWidth, frameHeight, frameWidth, 0f, 0f, -halfSize),  // bottom
+                    Edge(frameWidth, frameHeight, frameSize + frameWidth, -halfSize, 0f, 0f),  // left
+                    Edge(frameWidth, frameHeight, frameSize + frameWidth, halfSize, 0f, 0f),   // right
+                )
+
+                for (edge in edges) {
+                    val renderable = ShapeFactory.makeCube(
+                        Vector3(edge.w, edge.h, edge.l),
+                        Vector3.zero(),
+                        material
+                    )
+                    renderable.isShadowCaster = false
+                    renderable.isShadowReceiver = false
+
+                    val childNode = Node()
+                    childNode.renderable = renderable
+                    childNode.localPosition = Vector3(edge.x, edge.y, edge.z)
+                    parentNode.addChild(childNode)
+                }
+
+                parentNode.name = name
+                val transform = deserializeMatrix4(transformation)
+                parentNode.localScale = transform.first
+                parentNode.localPosition = transform.second
+                parentNode.localRotation = transform.third
+                completableFutureNode.complete(parentNode)
+            }
+            .exceptionally { throwable ->
+                completableFutureNode.completeExceptionally(throwable)
+                null
+            }
+
+        return completableFutureNode
+    }
+
     // Creates a node form a given gltf model path or URL. The gltf asset loading in Scenform is asynchronous, so the function returns a completable future of type Node
     fun makeNodeFromGltf(context: Context, transformationSystem: TransformationSystem, objectManagerChannel: MethodChannel, enablePans: Boolean, enableRotation: Boolean, name: String, modelPath: String, transformation: ArrayList<Double>): CompletableFuture<CustomTransformableNode> {
         val completableFutureNode: CompletableFuture<CustomTransformableNode> = CompletableFuture()
