@@ -4,6 +4,8 @@ import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Point
 import com.google.ar.core.Pose
+import dev.romainguy.kotlin.math.Float4
+import dev.romainguy.kotlin.math.Mat4
 import kotlin.math.sqrt
 
 // =============================================================================
@@ -96,4 +98,36 @@ internal fun deserializePose(transform: List<Double>): Pose {
     }
 
     return Pose(translation, floatArrayOf(x, y, z, w))
+}
+
+// =============================================================================
+// Node transform <-> kotlin-math Mat4 (Phase 3).
+//
+// The Dart side sends/receives a 4x4 transform as a 16-element list in
+// column-major order (vector_math Matrix4 storage / ARCore Pose.toMatrix).
+// kotlin-math Mat4(x, y, z, w) takes the four COLUMN vectors, so we map the
+// columns directly with NO transpose. serialize/deserialize are exact inverses,
+// matching the round-trip already verified for serialize/deserializePose.
+// =============================================================================
+
+/** Builds a [Mat4] from a Dart column-major 16-element transform. No transpose. */
+internal fun deserializeMat4(transform: List<Double>): Mat4 {
+    val m = FloatArray(16) { transform[it].toFloat() }
+    return Mat4(
+        Float4(m[0], m[1], m[2], m[3]),
+        Float4(m[4], m[5], m[6], m[7]),
+        Float4(m[8], m[9], m[10], m[11]),
+        Float4(m[12], m[13], m[14], m[15])
+    )
+}
+
+/** Serializes a [Mat4] to a column-major 16-element [DoubleArray] for the Dart side. */
+internal fun serializeMat4(mat: Mat4): DoubleArray {
+    val c0 = mat.x; val c1 = mat.y; val c2 = mat.z; val c3 = mat.w
+    return doubleArrayOf(
+        c0.x.toDouble(), c0.y.toDouble(), c0.z.toDouble(), c0.w.toDouble(),
+        c1.x.toDouble(), c1.y.toDouble(), c1.z.toDouble(), c1.w.toDouble(),
+        c2.x.toDouble(), c2.y.toDouble(), c2.z.toDouble(), c2.w.toDouble(),
+        c3.x.toDouble(), c3.y.toDouble(), c3.z.toDouble(), c3.w.toDouble()
+    )
 }
