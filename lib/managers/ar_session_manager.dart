@@ -29,6 +29,10 @@ class ARSessionManager {
   /// Receives hit results from user taps with tracked planes or feature points
   late ARHitResultHandler onPlaneOrPointTap;
 
+  /// Called once when the first plane is detected. Lets the host app dismiss an
+  /// onboarding hint (e.g. "move your device to detect a surface").
+  void Function()? onPlaneDetected;
+
   ARSessionManager(int id, this.buildContext, this.planeDetectionConfig,
       {this.debug = false}) {
     _channel = MethodChannel('arsession_$id');
@@ -127,6 +131,9 @@ class ARSessionManager {
             }).toList();
             onPlaneOrPointTap(hitTestResults);
           }
+          break;
+        case 'onPlaneDetected':
+          onPlaneDetected?.call();
           break;
         case 'dispose':
           _channel.invokeMethod<void>("dispose");

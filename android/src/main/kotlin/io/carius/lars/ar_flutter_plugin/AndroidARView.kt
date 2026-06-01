@@ -37,6 +37,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.google.ar.core.Anchor
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.Plane
 import com.google.ar.core.Session
 import com.google.ar.core.TrackingState
 import dev.romainguy.kotlin.math.Float3
@@ -129,6 +130,11 @@ internal class AndroidARView(
     @Volatile private var latestSession: Session? = null
     @Volatile private var latestFrame: Frame? = null
 
+    // Sent to Dart once when the first plane is detected, so the app can dismiss the
+    // "move your device" onboarding hint (SceneView has no built-in equivalent of the
+    // old Sceneform plane-discovery animation).
+    @Volatile private var planeDetectedSent = false
+
     private val mainHandler = Handler(Looper.getMainLooper())
 
     // ---- Self-supplied ViewTree owners (Flutter does not provide them) ----
@@ -209,6 +215,18 @@ internal class AndroidARView(
                         onSessionUpdated = { session, frame ->
                             latestSession = session
                             latestFrame = frame
+                            // Notify Dart once a plane is first tracked. onSessionUpdated
+                            // runs off the main thread, so post the channel call to main.
+                            if (!planeDetectedSent) {
+                                val hasPlane = frame.getUpdatedTrackables(Plane::class.java)
+                                        .any { it.trackingState == TrackingState.TRACKING }
+                                if (hasPlane) {
+                                    planeDetectedSent = true
+                                    mainHandler.post {
+                                        sessionManagerChannel.invokeMethod("onPlaneDetected", null)
+                                    }
+                                }
+                            }
                         },
                         // onSessionFailed MUST be a named argument: ARScene has two
                         // Function1<Exception,Unit> params and a positional arg binds wrong.
