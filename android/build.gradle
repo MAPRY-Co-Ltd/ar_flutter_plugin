@@ -63,6 +63,14 @@ dependencies {
     implementation 'androidx.compose.foundation:foundation'
 
     implementation 'androidx.appcompat:appcompat:1.7.1'
+
+    // Flutter PlatformView 内 ComposeView へ ViewTree*Owner を供給するために必須。
+    // appcompat/activity 経由では implementation スコープのため消費側 compile クラスパスに
+    // 漏れず Unresolved reference になる(実ビルドで判明)。明示宣言する。
+    // savedstate は SavedStateRegistryController.performAttach() を使うため 1.3.x 以上。
+    implementation 'androidx.lifecycle:lifecycle-runtime:2.9.2'      // ViewTreeLifecycleOwner
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.9.2'    // ViewTreeViewModelStoreOwner
+    implementation 'androidx.savedstate:savedstate:1.3.2'           // ViewTreeSavedStateRegistryOwner / performAttach
 }
 
 afterEvaluate {
