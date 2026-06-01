@@ -17,6 +17,7 @@ import android.view.ViewGroup
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -24,8 +25,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
@@ -41,6 +46,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
 import io.github.sceneview.SceneScope
+import io.github.sceneview.SurfaceType
 import io.github.sceneview.ar.ARScene
 import io.github.sceneview.gesture.GestureDetector
 import io.github.sceneview.node.Node
@@ -128,6 +134,18 @@ internal class AndroidARView(
     // ---- Self-supplied ViewTree owners (Flutter does not provide them) ----
     private val lifecycleOwner = ArViewLifecycleOwner()
 
+    // ---- Self-driven Compose recomposer ----
+    // FlutterActivity does NOT extend ComponentActivity, so Flutter sets no
+    // ViewTree*Owner on the FlutterView. Compose installs its WINDOW recomposer on
+    // the window root (the FlutterView) and reads its lifecycle there, so it crashes
+    // with "ViewTreeLifecycleOwner not found from FlutterView" regardless of the
+    // owners we set on our own ComposeView. Providing our own Recomposer as the
+    // parent CompositionContext bypasses the window recomposer entirely, making the
+    // setup independent of the host Activity type.
+    private val recomposerContext = AndroidUiDispatcher.CurrentThread
+    private val recomposerScope = CoroutineScope(recomposerContext)
+    private val recomposer = Recomposer(recomposerContext)
+
     // Drives the owner from the actual window attach/detach events. Held as a field so
     // it can be removed in dispose() before the owner is destroyed; otherwise a late
     // detach would call onPause() on an already-DESTROYED lifecycle.
@@ -164,6 +182,12 @@ internal class AndroidARView(
             setViewTreeViewModelStoreOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
 
+            // Use our own recomposer as the parent so Compose never reaches for the
+            // FlutterView-based window recomposer. Must be set before the composition
+            // is created (i.e. before attach). Drive it on the Compose UI dispatcher,
+            // which supplies the frame clock recomposition needs.
+            setParentCompositionContext(recomposer)
+
             setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 
             addOnAttachStateChangeListener(attachStateListener)
@@ -171,6 +195,13 @@ internal class AndroidARView(
             setContent {
                 ARScene(
                         modifier = Modifier.fillMaxSize(),
+                        // Render into a TextureView, not the default SurfaceView. A
+                        // SurfaceView owns a separate surface that z-orders above the
+                        // Flutter UI and hides the survey controls; a TextureView
+                        // composites inside the view tree / Flutter texture layer, so
+                        // Flutter widgets overlay the AR view correctly. (snapshot's
+                        // PixelCopy already handles the TextureView path.)
+                        surfaceType = SurfaceType.TextureSurface,
                         planeRenderer = showPlanesState.value,
                         sessionConfiguration = { _, config ->
                             config.planeFindingMode = planeFindingModeState.value
@@ -214,6 +245,12 @@ internal class AndroidARView(
                     }
                 }
             }
+        }
+
+        // Start the recomposition loop. runRecomposeAndApplyChanges suspends until the
+        // recomposer is cancelled (in dispose()).
+        recomposerScope.launch {
+            recomposer.runRecomposeAndApplyChanges()
         }
 
         installSessionHandler()
@@ -675,6 +712,9 @@ internal class AndroidARView(
         // cannot drive the lifecycle after DESTROYED.
         composeView.removeOnAttachStateChangeListener(attachStateListener)
         lifecycleOwner.onDestroy()
+        // Stop the recomposition loop and release its coroutine scope.
+        recomposer.cancel()
+        recomposerScope.cancel()
     }
 
     private companion object {
